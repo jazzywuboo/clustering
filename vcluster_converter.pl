@@ -4,7 +4,7 @@ use warnings;
 use Cwd;
 use Data::Dumper;
 # takes in files containing cui-word2vec vectors and prints them in the format required for the vcluster program in CLUTO
-# usage: perl vcluster_converter.pl [unformatted_dir] [vcluster_dir]
+# usage: perl vcluster_converter.pl [unformatted_dir] [vcluster_dir] [num_clusters]
 
 my ($unformatted_dir, $vcluster_dir, $num_clusters) = GetDirs();
 my $input_filenames = SaveInputFilenames();
