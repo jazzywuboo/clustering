@@ -9,12 +9,14 @@ use Data::Dumper;
 # calls vcluster to perform clustering and matches cuis to vectors
 # determines cluster centroid and labels cluster via the centroid
 
-my ($unformatted_dir, $vcluster_dir, $num_clusters) = GetDirs();
+## Main
+my ($unformatted_dir, $vcluster_dir, $num_clusters) = GetArgs();
 my $input_filenames = SaveInputFilenames();
 my $sizeof_matrices = GetSizeofMatrices();
 my $matrices = ExtractMatrices();
-#my $cui_vector_lookup = SaveCuiVectorPairs();
 
+## split below into new class; pass dirs, num_clusters, input_filenames into program
+my $cui_vector_lookup = SaveCuiVectorPairs();
 PrintVClusterMatrices($sizeof_matrices, $matrices);
 #RunVCluster();
 #MatchClusteredVectorsToCuis();
@@ -23,7 +25,7 @@ sub PrintUsageNotes {
 	print "Usage:\tperl vcluster_converter.pl [unformatted_dir] [vcluster_dir] [num_clusters]\n";
 }
 
-sub GetDirs {
+sub GetArgs {
 	# gets source directory and destination directory from user
 	no warnings 'uninitialized';
 	my $base_dir = cwd();
@@ -142,8 +144,7 @@ sub SaveCuiVectorPairs {
 				my $cui = $1;
 				$cui_vector_lookup{$file}{$cui} = ();
 				my $vector = $2;
-				my @vector_vals = ($vector =~ /(-?\d.\d+)/g);
-				push @{$cui_vector_lookup{$file}{$cui}}, [@vector_vals];
+				$cui_vector_lookup{$file}{$cui} = $vector;
 			}
 		}
 		close $fh;
@@ -152,10 +153,10 @@ sub SaveCuiVectorPairs {
 }
 
 sub RunVCluster {
-	#my $vcluster_command = `./vcluster $vcluster_dir/file $num_clusters`;
+	my $vcluster_command = `./vcluster $vcluster_dir/file $num_clusters`;
 }
 
 sub MatchClusteredVectorsToCuis {
-	#my %cui_vector_lookup = %$cui_vector_lookup;
+	my %cui_vector_lookup = %$cui_vector_lookup;
 }
 
