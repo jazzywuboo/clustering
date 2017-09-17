@@ -2,80 +2,93 @@
 use strict;
 use warnings;
 use Cwd;
-use Data::Dumper;
 
-my $dir = cwd();
-my ($file_path, $file_name) = GetARGV();
-my ($num_rows, $num_columns) = DetermineMatrixSize();
-my $matrix = ExtractMatrix();												# grab vectors from source files
-PrintMatrixFile($num_rows, $num_columns, $matrix);		# convert file to format required by CLUTO													# run cluto on converted file						
+my ($source_dir, $dest_dir) = GetDirs();
+my $sizeof_matrices = DetermineSizeofMatrices();
+my $matrices = ExtractMatrices();
+PrintVClusterMatrices($sizeof_matrices, $matrices);
 
-sub GetARGV {
+sub GetDirs {
+	# gets source directory and destination directory from user
 	no warnings 'uninitialized';
-	my $file_name = $ARGV[0];
-	my $file_path = "$dir/vector_files/$file_name";					# get location of source file from user input
-	if (! (-e $file_path) ){
-		print "$file_path: File not found.\n";
-		exit;
+	my $base_dir = cwd();
+	my $source_dir = "$ARGV[0]";
+	my $dest_dir = "$ARGV[1]";
+	if (! (-e $source_dir) ){
+		print "$source_dir not found. Check source directory name.\n";
+		exit
 	}
-	else {
-		$file_path =~ s/\s+//;											# remove any excess whitespace
+	if (! (-e $dest_dir)){
+		mkdir "$base_dir/$dest_dir", 0755;
 	}
-	return $file_path, $file_name;
+	$source_dir = "$base_dir/$ARGV[0]";
+	$dest_dir = "$base_dir/$ARGV[1]";
+	return $source_dir, $dest_dir;
 }
 
-sub DetermineMatrixSize {
-	#extracts matrix info
-	my $num_columns;
-	if ($file_name =~ /.*?cui.(\d+)/) {
-		$num_columns = $1;
-	}
-	my $num_rows;
-	open my $fh, '<', "$file_path" or die "Can't open $file_path: $!";
-	while (my $line = <$fh>){
-		if ($line =~ /^C\d{7}(.+)/){
-			$num_rows++;
+sub DetermineSizeofMatrices {
+	# determines size of matrix in each file
+	my %sizeof_matrices;
+	opendir my $dh, $source_dir or die "Can't open $source_dir: $!";
+	while (my $file = readdir($dh)) {
+		next if ($file =~ /^\./);
+		next if -d $file;
+		if ($file =~ /.*?.cui.(\d+)/){
+			my $num_rows = $1;
+			my $num_columns;
+			open my $fh, '<', "$source_dir/$file" or die "Can't open $source_dir/$file: $!";
+			while (my $line = <$fh>){
+				if ($line =~ /^C\d{7}(.+)/){
+					$num_columns++;
+				}
+			}
+			close $fh;
+			$sizeof_matrices{$file}{$num_rows} = $num_columns;
 		}
 	}
-	close $fh;
-	return $num_rows, $num_columns;
+	closedir $dh;
+	return \%sizeof_matrices;
 }
 
-sub ExtractMatrix {
-	#extracts feature vectors (matrix) for linking cuis
+sub ExtractMatrices {
+	# extractors word2vec matrices from each file
 	my %matrices;
-	open my $fh, '<', "$file_path" or die "Can't open $file_path: $!";
-	while (my $line = <$fh>){
-		if ($line =~ /^(C\d{7})(.+)/){
-			my $cui = $1;
-			my $vector = $2;
-			my @scores = ($vector =~ /(-?\d.\d+)/g);
-			$matrices{$cui} = [@scores];
-		}
+	opendir my $dh, $source_dir or die "Can't open $source_dir: $!";
+	while (my $file = readdir($dh)) {
+		next if ($file =~ /^\./);
+		next if -d $file;
+		open my $fh, '<', "$source_dir/$file" or die "Can't open $source_dir/$file: $!";
+			$matrices{$file} = ();
+			while (my $line = <$fh>){
+				if ($line =~ /^C\d{7}(.+)/){
+					my $vector = $1;
+					my @vector_vals = ($vector =~ /(-?\d.\d+)/g);
+					push @{$matrices{$file}}, [@vector_vals];
+				}
+			}
+		close $fh;
 	}
-	close $fh;
-	if (! %matrices){
-		print "File contains no vector data to cluster.\n";
-		exit;
-	}
-	print Dumper(\%matrices);
+	closedir $dh;
 	return \%matrices;
 }
 
-sub PrintMatrixFile {
-	#prints vectors in dense matrix format required by matrix 
-	my ($num_rows, $num_columns, $matrix) = (@_);
-	$file_path =~ s/vector_files/vcluster_files/;
-	open my $fh, '>', "$file_path" or die "Can't open $file_path: $!";
-	print $fh "$num_rows $num_columns\n";
-	foreach my $cui (keys %$matrix){
-		foreach my $score_array (@{$matrix->{$cui}}) {
-			print $fh "$score_array ";	
+sub PrintVClusterMatrices {
+	# prints dense matrices in format for vcluster program in CLUTO
+	my ($sizeof_matrices, $matrices) = (@_);
+	my %sizeof_matrices = %$sizeof_matrices;
+	my %matrices = %$matrices;
+	foreach my $file (keys %sizeof_matrices) {
+		foreach my $num_rows (keys $sizeof_matrices{$file}){
+			my $num_columns = $sizeof_matrices{$file}{$num_rows};
+			open my $fh, ">", "$dest_dir/$file" or die "Can't open $dest_dir/$file: $!";
+			print $fh "$num_rows $num_columns\n";
+			foreach my $vector_vals (@{$matrices{$file}}) {
+				print $fh join(' ', @$vector_vals);
+				print $fh "\n";
+			}
+			close $fh;
 		}
-		print $fh "\n";
 	}
-	close $fh;
-	print "Finished printing to: $file_path\n";
+	print "Vcluster-formatted files located at: $dest_dir\n";
 }
-
 
