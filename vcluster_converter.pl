@@ -4,6 +4,7 @@ use warnings;
 use Cwd;
 
 # takes in files containing cui-word2vec vectors and prints them in the format required for the vcluster program in CLUTO
+# usage: perl vcluster_converter.pl [source_dir] [dest_dir]
 
 my ($source_dir, $dest_dir) = GetDirs();
 my $sizeof_matrices = DetermineSizeofMatrices();
