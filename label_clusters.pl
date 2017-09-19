@@ -7,11 +7,17 @@ use Data::Dumper;
 ## Main
 my $start_time = time;
 
-my ($unformatted_dir, $clustered_dir) = GetArgs();
-my $vector_indeces = ExtractVectorIndeces();
-my $clustered_vector_indices = ExtractClusteredVectors();
-my $clustered_vectors = ConvertIndicesToVectors();
-my $cluster_centroids = CalculateCentroid();
+my ($cui_terms_dir, $unformatted_dir, $formatted_dir, $clustered_dir) = GetArgs();
+#my $cui_terms = ExtractCuiTerms();					# file -> cui -> term
+#my $cui_vector_indices = ExtractCuiVectorIndices();	# file -> vector_index -> cui
+my $vector_indices = ExtractVectorIndeces();		# file -> vector_index -> @vector_value
+my $cluster_indices = ExtractClusterIndices();		# file -> cluster_index -> @vector_indices
+my $centroid_values = CalculateCentroids();		# file -> cluster_index -> @centroid
+#my $centroid_cuis = LabelCentroidCuis();			# file -> cluster_index -> centroid_cui
+#my $labelled_clusters = LabelClusters();			# file -> centroid_cui -> @vector_cuis
+#PrintLabelledClusters();							# file format:
+						# cluster_index -> centroid_cui -> centroid_term -> vector_cui -> vector_term
+
 PrintExecutionTime();
 
 sub PrintExecutionTime {
@@ -20,132 +26,143 @@ sub PrintExecutionTime {
 }
 
 sub PrintUsageNotes {
-	print "Usage: perl label_clusters.pl [unformatted_dir] [clustered_dir]";
+	print "Usage: perl label_clusters.pl [cui_terms_dir] [unformatted_vectors_dir] [formatted_vectors_dir] [clustered_vectors_dir]\n";
 }
 
 sub GetArgs {
 	# gets source directory and destination directory from user
 	no warnings 'uninitialized';
-	my $base_dir = cwd();
-	my $unformatted_dir = $ARGV[0];
-	my $clustered_dir = $ARGV[1];
 
-	if (-f $unformatted_dir){
-		print "Error: Input must be a directory.\n";
+	if ( $#ARGV < 3) {
+		print "Error: fewer than 4 arguments provided.\n";
 		PrintUsageNotes();
 		exit
 	}
-	if (! (-e $unformatted_dir) ){
-		print "Error: $unformatted_dir not found. Check source directory name.\n";
+
+	my $base_dir = cwd();
+	my $cui_terms_dir = "$base_dir/$ARGV[0]";
+	my $unformatted_dir = "$base_dir/$ARGV[1]";
+	my $formatted_dir = "$base_dir/$ARGV[2]";
+	my $clustered_dir = "$base_dir/$ARGV[3]";
+
+	if (!(-e $cui_terms_dir) or !(-e $unformatted_dir) or !(-e $formatted_dir) or !(-e $clustered_dir)
+		or -f $cui_terms_dir or -f $unformatted_dir or -f $formatted_dir or -f $clustered_dir){
+		print "Invalid filepaths.\n";
 		PrintUsageNotes();
 		exit
 	}
-	$unformatted_dir = "$base_dir/$unformatted_dir";
-	$clustered_dir = "$base_dir/$clustered_dir";
-	return $unformatted_dir, $clustered_dir;
+
+	return $cui_terms_dir, $unformatted_dir, $formatted_dir, $clustered_dir;
 }
 
-sub ExtractVectorIndeces {
-	my %vector_indeces;
-	my $vector_index = 0;
+sub ExtractCuiTerms {
+	my %cui_terms;
 	opendir my $dh, $unformatted_dir or die "Can't open $unformatted_dir: $!";
 	while (my $file = readdir($dh)) {
 		next if ($file =~ /^\./);
 		next if -d $file;
 		open my $fh, "$unformatted_dir/$file" or die "Can't open $unformatted_dir/$file: $!";
-		while (my $line = <$fh>) {
-			if ($line =~ /^(C\d{7})(.+)/){
-				$vector_index++;
-				my $cui = $1;
-				my $vector = $2;
-				$vector_indeces{$file}{$vector_index} = $vector;
-			}
-		}
 		close $fh;
 	}
 	closedir $dh;
-	return \%vector_indeces;
+	return \%cui_terms;
 }
 
-sub ExtractClusteredVectors {
-	my %clustered_vector_indices;
-	my $vector_index = 0;
-	opendir my $dh, $clustered_dir or die "Can't open $clustered_dir: $!";
+sub ExtractCuiVectorIndices {
+	# creates hash to look up cuis and terms by their vector index
+	my %cui_vector_indices;
+	opendir my $dh, $unformatted_dir or die "Can't open $unformatted_dir: $!";
 	while (my $file = readdir($dh)) {
 		next if ($file =~ /^\./);
 		next if -d $file;
-		open my $fh, "$clustered_dir/$file" or die "Can't open: $clustered_dir/$file: $!";
-		while (my $line = <$fh>){
-			if ($line =~ /(^\d+$)/) {
+		open my $fh, "$unformatted_dir/$file" or die "Can't open $unformatted_dir/$file: $!";
+		my $vector_index = 0;
+		while (my $line = <$fh>) {
+			if ($line =~ /^(C\d{7}).+/){
+				my $cui = $1;
+				$cui_vector_indices{$file}{$vector_index} = $cui;
 				$vector_index++;
-				my $cluster_index = $1+1;
-				$file =~ s/.clustering.\d+//;	# remove ".clustering.$num_clusters" from filename
-				push @{$clustered_vector_indices{$file}{$cluster_index}}, $vector_index;
 			}
 		}
 		close $fh;
 	}
 	closedir $dh;
-	return \%clustered_vector_indices;
+	return \%cui_vector_indices;
 }
 
-sub ConvertIndicesToVectors {
-	#my @vector_vals = ($vector =~ /(-?\d.\d+)/g);
-	my %clustered_vector_indices = %$clustered_vector_indices;
-	my %vector_indeces = %$vector_indeces;
-	my %clustered_vectors;
+sub ExtractVectorIndeces {
+	# gets the vector index (line number in file) for each vector from the formatted vector files that are input into vcluster
+	# returns a hash with keys as file/vector index and value as vector array
+	my %vector_indices;
+	opendir my $dh, $formatted_dir or die "Can't open $formatted_dir: $!";
+	while (my $file = readdir($dh)) {
+		next if ($file =~ /^\./);
+		next if -d $file;
+		open my $fh, "$formatted_dir/$file" or die "Can't open $formatted_dir/$file: $!";
+		my $vector_index = -1;			# starts vector index at 0
+		while (my $line = <$fh>) {
+			if ($vector_index > -1){	# skips first line of input - [#rows] [#columns]
+				my $vector = $line;
+				my @vector_vals = ($vector =~ /(-?\d.\d+)/g);
+				push @{$vector_indices{$file}{$vector_index}}, [@vector_vals];
+			}
+			$vector_index++;
+		}
+		close $fh;
+	}
+	closedir $dh;
+	return \%vector_indices;
+}
 
-	foreach my $file (sort keys %clustered_vector_indices){
-		foreach my $cluster_index (sort {$a <=> $b} keys $clustered_vector_indices{$file}){
-			foreach my $vector_index (@{$clustered_vector_indices{$file}{$cluster_index}}){
-				if (exists $vector_indeces{$file}{$vector_index}){
-					my $vector = $vector_indeces{$file}{$vector_index};
-					my @vector_vals = ($vector =~ /(-?\d.\d+)/g);
-					push @{$clustered_vectors{$file}{$cluster_index}}, [@vector_vals];
+sub ExtractClusterIndices {
+	# extracts results of clustering
+	# tells us which cluster a vector belongs to
+	# returns a hash of $cluster_indices{$file}{$cluster_index} = @vector_index
+	my %cluster_indices;
+	opendir my $dh, $clustered_dir or die "Can't open $clustered_dir: $!";
+	while (my $file = readdir($dh)) {
+		next if ($file =~ /^\./);
+		next if -d $file;	
+		open my $fh, "$clustered_dir/$file" or die "Can't open $clustered_dir/$file: $!";
+		my $vector_index = 0;
+		while (my $line = <$fh>){
+			my $cluster_index = $line;
+			$cluster_index =~ s/\s+//g;
+			$file =~ s/.clustering.\d+//;
+			push @{$cluster_indices{$file}{$cluster_index}}, $vector_index;
+			$vector_index++;
+		}
+		close $fh;	
+	}
+	closedir $dh;
+	return \%cluster_indices;
+}
+
+sub CalculateCentroids {
+	my %cluster_indices = %$cluster_indices;
+	my %vector_indices = %$vector_indices;
+	my %centroid_values;
+	foreach my $file (keys %cluster_indices){						# for each file
+		foreach my $cluster_index (keys $cluster_indices{$file}){	# for each cluster
+			my @vector_index_array = @{$cluster_indices{$file}{$cluster_index}};
+			my $vectors_per_cluster = $#vector_index_array;
+			my $vector_count = 0;
+			foreach my $vector_index (@vector_index_array){			# for each array of vectors within the cluser
+				my @vector_vals = $vector_indices{$file}{$vector_index};
+				foreach my $v_i (@vector_vals){
+					if($vector_count == 0){
+						push @{$centroid_values{$cluster_index}}, $v_i;
+					}
+					else {
+						$centroid_values{$cluster_index}[$vector_count] += $v_i;
+					}
 				}
+				$vector_count++;
 			}
 		}
 	}
-	return \%clustered_vectors;
+	return \%centroid_values;
 }
-
-sub CalculateCentroid {
-	my %clustered_vectors = %$clustered_vectors;
-	my %cluster_centroid;
-	my %vectors_per_cluster;
-
-	foreach my $file (keys %clustered_vectors){
-		foreach my $cluster_index (keys $clustered_vectors{$file}){
-			foreach my $vector (@{$clustered_vectors{$file}{$cluster_index}}) {
-				my $i = 0;
-				foreach my $v_i (@$vector){
-					$cluster_centroid{$file}{$cluster_index}[$i] += $v_i;
-					$i++;
-				}
-				$vectors_per_cluster{$file}{$cluster_index} = $i;
-			}
-		}
-	}
-	foreach my $file (keys %cluster_centroid){
-		foreach my $cluster_index (keys $cluster_centroid{$file}){
-			foreach my $avg (@{$cluster_centroid{$file}{$cluster_index}}){
-				my $vectors_per_cluster = $vectors_per_cluster{$file}{$cluster_index};
-				$avg /= $vectors_per_cluster;
-			}
-		}
-	}
-	return \%cluster_centroids;
-}
-
-sub LabelCentroid {
-	my $cluster_centroids = %$cluster_centroids;
-	my $clustered_vectors = %$clustered_vectors;
-	
-}
-
-
-
-
 
 
 
