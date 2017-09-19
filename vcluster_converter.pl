@@ -2,27 +2,25 @@
 use strict;
 use warnings;
 use Cwd;
-use Data::Dumper;
-# usage: perl vcluster_converter.pl [unformatted_dir] [vcluster_dir] [num_clusters]
+# usage: perl vcluster_converter.pl [unformatted_dir] [vcluster_dir]
 
-# takes in files containing cui-word2vec vectors and prints them in the format required for the vcluster program in CLUTO
-# calls vcluster to perform clustering and matches cuis to vectors
-# determines cluster centroid and labels cluster via the centroid
+# takes in files containing word2vec vectors and prints them in the format required for the vcluster program in CLUTO
+# line 1: num_rows num_columns
+# lines [2-num_rows+1]: vectors
 
 ## Main
-my ($unformatted_dir, $vcluster_dir, $num_clusters) = GetArgs();
+my $start_time = time;
+my ($unformatted_dir, $vcluster_dir) = GetArgs();
 my $input_filenames = SaveInputFilenames();
 my $sizeof_matrices = GetSizeofMatrices();
 my $matrices = ExtractMatrices();
-
-## split below into new class; pass dirs, num_clusters, input_filenames into program
-my $cui_vector_lookup = SaveCuiVectorPairs();
 PrintVClusterMatrices($sizeof_matrices, $matrices);
-#RunVCluster();
-#MatchClusteredVectorsToCuis();
+my $end_time = time - $start_time;
+my $execution_time = $end_time/60;
+printf("Execution time: %.2f mins\n", $execution_time);
 
 sub PrintUsageNotes {
-	print "Usage:\tperl vcluster_converter.pl [unformatted_dir] [vcluster_dir] [num_clusters]\n";
+	print "Usage:\tperl vcluster_converter.pl [unformatted_dir] [vcluster_dir]\n";
 }
 
 sub GetArgs {
@@ -31,7 +29,6 @@ sub GetArgs {
 	my $base_dir = cwd();
 	my $unformatted_dir = $ARGV[0];
 	my $vcluster_dir = $ARGV[1];
-	my $num_clusters = $ARGV[2];
 	if (-f $unformatted_dir){
 		print "Error: Input must be a directory.\n";
 		PrintUsageNotes();
@@ -45,21 +42,9 @@ sub GetArgs {
 	if (! (-e $vcluster_dir)){
 		mkdir "$base_dir/$vcluster_dir", 0755;
 	}
-	if ($num_clusters =~ /^-?\d+$/){
-		if ($num_clusters < 0){
-			print "Error: Number of clusters must be >= 1\n";
-			PrintUsageNotes();	
-			exit
-		}
-	}
-	else {
-		print "Error: Invalid input for number of clusters.\n";
-		PrintUsageNotes();
-		exit
-	}
 	$unformatted_dir = "$base_dir/$ARGV[0]";
 	$vcluster_dir = "$base_dir/$ARGV[1]";
-	return $unformatted_dir, $vcluster_dir, $num_clusters;
+	return $unformatted_dir, $vcluster_dir;
 }
 
 sub SaveInputFilenames {
@@ -81,13 +66,8 @@ sub GetSizeofMatrices {
 		open my $fh, '<', "$unformatted_dir/$file" or die "Can't open $unformatted_dir/$file: $!";
 		while (my $line = <$fh>){
 			if ($line =~ /^(-?\d+)\s(-?\d+)$/){
-				my $num_columns = $1;
-				my $num_rows = $2;
-				if ($num_clusters >= $num_rows){
-					print "Error: Number of clusters must be less than number of vectors ($file has $num_rows vector(s); you specified $num_clusters clusters).\n";
-					PrintUsageNotes();
-					exit
-				}
+				my $num_rows = $1-1;
+				my $num_columns = $2;
 				$sizeof_matrices{$file}{$num_rows} = $num_columns;
 				last;
 			}
@@ -133,30 +113,5 @@ sub PrintVClusterMatrices {
 		}
 	}
 	print "Vcluster-formatted files located at: $vcluster_dir\n";
-}
-
-sub SaveCuiVectorPairs {
-	my %cui_vector_lookup;
-	foreach my $file (@$input_filenames){
-		open my $fh, '<', "$unformatted_dir/$file" or die "Can't open $unformatted_dir/$file: $!";
-		while (my $line = <$fh>){
-			if ($line =~ /^(C\d{7})(.+)/){
-				my $cui = $1;
-				$cui_vector_lookup{$file}{$cui} = ();
-				my $vector = $2;
-				$cui_vector_lookup{$file}{$cui} = $vector;
-			}
-		}
-		close $fh;
-	}
-	return \%cui_vector_lookup;
-}
-
-sub RunVCluster {
-	my $vcluster_command = `./vcluster $vcluster_dir/file $num_clusters`;
-}
-
-sub MatchClusteredVectorsToCuis {
-	my %cui_vector_lookup = %$cui_vector_lookup;
 }
 
