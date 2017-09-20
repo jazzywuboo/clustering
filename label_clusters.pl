@@ -153,10 +153,10 @@ sub CalculateCentroids {
 				my @vector_vals = $vector_indices{$file}{$vector_index};
 				foreach my $v_i (@vector_vals){
 					if($vector_count == 0){
-						push @{$centroid_values{$cluster_index}}, $v_i;
+						push @{$centroid_values{$file}{$cluster_index}}, $v_i;
 					}
 					else {
-						$centroid_values{$cluster_index}[$vector_count] += $v_i;
+						$centroid_values{$file}{$cluster_index}[$vector_count] += $v_i;
 					}
 				}
 				$vector_count++;
