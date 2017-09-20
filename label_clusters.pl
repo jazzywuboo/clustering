@@ -2,6 +2,7 @@
 use strict;
 use warnings;
 use Cwd;
+use List::MoreUtils qw(each_array);
 use Data::Dumper;
 
 ## Main
@@ -164,6 +165,24 @@ sub CalculateCentroids {
 		}
 	}
 	return \%centroid_values;
+}
+
+sub CosSim {
+	my ($v_1, $v_2) = (@_);
+	my @v_1 = @$v_1;
+	my @v_2 = @$v_2;
+	my $vectors = each_array(@v_1, @v_2);
+	my $numerator;
+	my $x_mag;
+	my $y_mag;
+	while (my ($x, $y) = $vectors->() ) {
+		$numerator += $x*$y;
+		$x_mag += $x**2;
+		$y_mag += $y**2;
+	}
+	my $denominator = sqrt($x_mag)*sqrt($y_mag);
+	my $cos_sim = $numerator/$denominator;
+	return $cos_sim;
 }
 
 sub LabelClusters {
