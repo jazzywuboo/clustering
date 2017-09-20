@@ -168,6 +168,7 @@ sub CalculateCentroids {
 }
 
 sub CosSim {
+	# 
 	my ($v_1, $v_2) = (@_);
 	my @v_1 = @$v_1;
 	my @v_2 = @$v_2;
@@ -186,6 +187,8 @@ sub CosSim {
 }
 
 sub LabelClusters {
+	# matches a cluster's calculated centroid value to the vector in the cluster with the smallest cosine similarity
+	# cosine similarity b
 	my %centroid_values = %$centroid_values;
 	my %cluster_indices = %$cluster_indices;
 	my %vector_indices = %$vector_indices;
@@ -199,7 +202,7 @@ sub LabelClusters {
 			my $min_vector_index;
 			foreach my $vector_index (@{$cluster_indices{$file}{$cluster_index}}){
 				my @cluster_vector = $vector_indices{$file}{$vector_index};
-				my $cos_sim = CosSim(@centroid_vector, @cluster_vector);
+				my $cos_sim = CosSim(\@centroid_vector, \@cluster_vector);
 				if ($cos_sim < $min_cos_sim){
 					$min_cos_sim = $cos_sim;
 					$min_vector_index = $vector_index;
