@@ -9,14 +9,12 @@ use Data::Dumper;
 my $start_time = time;
 
 my ($cui_terms_dir, $unformatted_dir, $formatted_dir, $clustered_dir) = GetArgs();
-#my $cui_terms = ExtractCuiTerms();					# file -> cui -> term
+my $cui_terms = ExtractCuiTerms();					# file -> cui -> term
 my $cui_vector_indices = ExtractCuiVectorIndices();	# file -> vector_index -> cui
 my $vector_indices = ExtractVectorIndeces();		# file -> vector_index -> @vector_value
 my $cluster_indices = ExtractClusterIndices();		# file -> cluster_index -> @vector_indices
-my $centroid_values = CalculateCentroids();		# file -> cluster_index -> @centroid
-LabelClusters();
-#my $centroid_cuis = LabelCentroidCuis();			# file -> cluster_index -> centroid_cui
-#my $labelled_clusters = LabelClusters();			# file -> centroid_cui -> @vector_cuis
+my $centroid_values = CalculateCentroids();			# file -> cluster_index -> @centroid
+my $labelled_clusters = LabelClusters();			# file -> cluster_index -> centroid_cui
 #PrintLabelledClusters();							# file format:
 						# cluster_index -> centroid_cui -> centroid_term -> vector_cui -> vector_term
 
@@ -58,6 +56,7 @@ sub GetArgs {
 }
 
 sub ExtractCuiTerms {
+	# extracts data to generate a cui/term pair lookup table
 	my %cui_terms;
 	opendir my $dh, $unformatted_dir or die "Can't open $unformatted_dir: $!";
 	while (my $file = readdir($dh)) {
@@ -142,6 +141,7 @@ sub ExtractClusterIndices {
 }
 
 sub CalculateCentroids {
+	# calculates the "centroid" (average value of all vectors) for a cluster
 	my %cluster_indices = %$cluster_indices;
 	my %vector_indices = %$vector_indices;
 	my %centroid_values;
@@ -168,7 +168,9 @@ sub CalculateCentroids {
 }
 
 sub CosSim {
-	# 
+	# calculates cosine similarity between two vectors (aka the dot product)
+	# cosine similarity forumla (Vector a, Vector b):
+	# (a * b) / (|a|*|b|)
 	my ($v_1, $v_2) = (@_);
 	my @v_1 = @$v_1;
 	my @v_2 = @$v_2;
@@ -187,8 +189,8 @@ sub CosSim {
 }
 
 sub LabelClusters {
-	# matches a cluster's calculated centroid value to the vector in the cluster with the smallest cosine similarity
-	# cosine similarity b
+	# labels cluster centroid with cui/term of vector closest to the centroid, determined with cosine similarity 
+
 	my %centroid_values = %$centroid_values;
 	my %cluster_indices = %$cluster_indices;
 	my %vector_indices = %$vector_indices;
@@ -199,17 +201,18 @@ sub LabelClusters {
 		foreach my $cluster_index (keys $centroid_values{$file}){
 			my $min_cos_sim = 0;
 			my @centroid_vector = $centroid_values{$file}{$cluster_index};
-			my $min_vector_index;
+			my $min_vector_index = -1;
 			foreach my $vector_index (@{$cluster_indices{$file}{$cluster_index}}){
 				my @cluster_vector = $vector_indices{$file}{$vector_index};
 				my $cos_sim = CosSim(\@centroid_vector, \@cluster_vector);
+				print "$file $cluster_index $vector_index $cos_sim\n";
 				if ($cos_sim < $min_cos_sim){
 					$min_cos_sim = $cos_sim;
 					$min_vector_index = $vector_index;
 				}
 			}
 			my $centroid_cui = $cui_vector_indices{$file}{$min_vector_index};
-			$centroid_labels{$cluster_index} = $centroid_cui;
+			$centroid_labels{$file}{$cluster_index} = $centroid_cui;
 		}
 	}
 	print Dumper(\%centroid_labels);
