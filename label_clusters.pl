@@ -9,10 +9,11 @@ my $start_time = time;
 
 my ($cui_terms_dir, $unformatted_dir, $formatted_dir, $clustered_dir) = GetArgs();
 #my $cui_terms = ExtractCuiTerms();					# file -> cui -> term
-#my $cui_vector_indices = ExtractCuiVectorIndices();	# file -> vector_index -> cui
+my $cui_vector_indices = ExtractCuiVectorIndices();	# file -> vector_index -> cui
 my $vector_indices = ExtractVectorIndeces();		# file -> vector_index -> @vector_value
 my $cluster_indices = ExtractClusterIndices();		# file -> cluster_index -> @vector_indices
 my $centroid_values = CalculateCentroids();		# file -> cluster_index -> @centroid
+LabelClusters();
 #my $centroid_cuis = LabelCentroidCuis();			# file -> cluster_index -> centroid_cui
 #my $labelled_clusters = LabelClusters();			# file -> centroid_cui -> @vector_cuis
 #PrintLabelledClusters();							# file format:
@@ -62,6 +63,7 @@ sub ExtractCuiTerms {
 		next if ($file =~ /^\./);
 		next if -d $file;
 		open my $fh, "$unformatted_dir/$file" or die "Can't open $unformatted_dir/$file: $!";
+		# stub
 		close $fh;
 	}
 	closedir $dh;
@@ -164,5 +166,30 @@ sub CalculateCentroids {
 	return \%centroid_values;
 }
 
+sub LabelClusters {
+	my %centroid_values = %$centroid_values;
+	my %cluster_indices = %$cluster_indices;
+	my %vector_indices = %$vector_indices;
+	my %cui_vector_indices = %$cui_vector_indices;
+	my %centroid_labels;
 
-
+	foreach my $file (keys %centroid_values){
+		foreach my $cluster_index (keys $centroid_values{$file}){
+			my $min_cos_sim = 0;
+			my @centroid_vector = $centroid_values{$file}{$cluster_index};
+			my $min_vector_index;
+			foreach my $vector_index (@{$cluster_indices{$file}{$cluster_index}}){
+				my @cluster_vector = $vector_indices{$file}{$vector_index};
+				my $cos_sim = CosSim(@centroid_vector, @cluster_vector);
+				if ($cos_sim < $min_cos_sim){
+					$min_cos_sim = $cos_sim;
+					$min_vector_index = $vector_index;
+				}
+			}
+			my $centroid_cui = $cui_vector_indices{$file}{$min_vector_index};
+			$centroid_labels{$cluster_index} = $centroid_cui;
+		}
+	}
+	print Dumper(\%centroid_labels);
+	return \%centroid_labels;
+}
