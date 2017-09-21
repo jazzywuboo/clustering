@@ -2,22 +2,14 @@
 use strict;
 use warnings;
 use Cwd;
-use List::MoreUtils qw(each_array);
-use Data::Dumper;
 
 ## Main
 my $start_time = time;
-
 my ($cui_terms_dir, $unformatted_dir, $formatted_dir, $clustered_dir) = GetArgs();
-my $cui_terms = ExtractCuiTerms();					# file -> cui -> term
-my $cui_vector_indices = ExtractCuiVectorIndices();	# file -> vector_index -> cui
-my $vector_indices = ExtractVectorIndeces();		# file -> vector_index -> @vector_value
-my $cluster_indices = ExtractClusterIndices();		# file -> cluster_index -> @vector_indices
-my $centroid_values = CalculateCentroids();			# file -> cluster_index -> @centroid
-my $labelled_clusters = LabelClusters();			# file -> cluster_index -> centroid_cui
-#PrintLabelledClusters();							# file format:
-						# cluster_index -> centroid_cui -> centroid_term -> vector_cui -> vector_term
 
+my $vector_indices = ExtractVectorIndeces();		# file -> vector_index -> @vector_value
+my $clustered_vectors = ExtractClusteredVectors();
+CalculateCentroids();
 PrintExecutionTime();
 
 sub PrintExecutionTime {
@@ -55,43 +47,6 @@ sub GetArgs {
 	return $cui_terms_dir, $unformatted_dir, $formatted_dir, $clustered_dir;
 }
 
-sub ExtractCuiTerms {
-	# extracts data to generate a cui/term pair lookup table
-	my %cui_terms;
-	opendir my $dh, $unformatted_dir or die "Can't open $unformatted_dir: $!";
-	while (my $file = readdir($dh)) {
-		next if ($file =~ /^\./);
-		next if -d $file;
-		open my $fh, "$unformatted_dir/$file" or die "Can't open $unformatted_dir/$file: $!";
-		# stub
-		close $fh;
-	}
-	closedir $dh;
-	return \%cui_terms;
-}
-
-sub ExtractCuiVectorIndices {
-	# creates hash to look up cuis and terms by their vector index
-	my %cui_vector_indices;
-	opendir my $dh, $unformatted_dir or die "Can't open $unformatted_dir: $!";
-	while (my $file = readdir($dh)) {
-		next if ($file =~ /^\./);
-		next if -d $file;
-		open my $fh, "$unformatted_dir/$file" or die "Can't open $unformatted_dir/$file: $!";
-		my $vector_index = 0;
-		while (my $line = <$fh>) {
-			if ($line =~ /^(C\d{7}).+/){
-				my $cui = $1;
-				$cui_vector_indices{$file}{$vector_index} = $cui;
-				$vector_index++;
-			}
-		}
-		close $fh;
-	}
-	closedir $dh;
-	return \%cui_vector_indices;
-}
-
 sub ExtractVectorIndeces {
 	# gets the vector index (line number in file) for each vector from the formatted vector files that are input into vcluster
 	# returns a hash with keys as file/vector index and value as vector array
@@ -106,7 +61,7 @@ sub ExtractVectorIndeces {
 			if ($vector_index > -1){	# skips first line of input - [#rows] [#columns]
 				my $vector = $line;
 				my @vector_vals = ($vector =~ /(-?\d.\d+)/g);
-				push @{$vector_indices{$file}{$vector_index}}, [@vector_vals];
+				$vector_indices{$file}{$vector_index} = [@vector_vals];
 			}
 			$vector_index++;
 		}
@@ -116,11 +71,10 @@ sub ExtractVectorIndeces {
 	return \%vector_indices;
 }
 
-sub ExtractClusterIndices {
+sub ExtractClusteredVectors {
 	# extracts results of clustering
-	# tells us which cluster a vector belongs to
-	# returns a hash of $cluster_indices{$file}{$cluster_index} = @vector_index
-	my %cluster_indices;
+	my %vector_indices = %$vector_indices;
+	my %clustered_vectors;
 	opendir my $dh, $clustered_dir or die "Can't open $clustered_dir: $!";
 	while (my $file = readdir($dh)) {
 		next if ($file =~ /^\./);
@@ -131,90 +85,37 @@ sub ExtractClusterIndices {
 			my $cluster_index = $line;
 			$cluster_index =~ s/\s+//g;
 			$file =~ s/.clustering.\d+//;
-			push @{$cluster_indices{$file}{$cluster_index}}, $vector_index;
+			my @vector = $vector_indices{$file}{$vector_index};
+			push @{$clustered_vectors{$file}{$cluster_index}}, @vector;
 			$vector_index++;
 		}
 		close $fh;	
 	}
 	closedir $dh;
-	return \%cluster_indices;
+	return \%clustered_vectors;
 }
 
 sub CalculateCentroids {
 	# calculates the "centroid" (average value of all vectors) for a cluster
-	my %cluster_indices = %$cluster_indices;
-	my %vector_indices = %$vector_indices;
+	my %clustered_vectors = %$clustered_vectors;
 	my %centroid_values;
-	foreach my $file (keys %cluster_indices){						# for each file
-		foreach my $cluster_index (keys $cluster_indices{$file}){	# for each cluster
-			my @vector_index_array = @{$cluster_indices{$file}{$cluster_index}};
-			my $vectors_per_cluster = $#vector_index_array;
-			my $vector_count = 0;
-			foreach my $vector_index (@vector_index_array){			# for each array of vectors within the cluser
-				my @vector_vals = $vector_indices{$file}{$vector_index};
-				foreach my $v_i (@vector_vals){
-					if($vector_count == 0){
-						push @{$centroid_values{$file}{$cluster_index}}, $v_i;
-					}
-					else {
-						$centroid_values{$file}{$cluster_index}[$vector_count] += $v_i;
-					}
+	my $num_columns = 200;	# change to pass in value
+
+	foreach my $file (keys %clustered_vectors){
+		foreach my $cluster_index (keys $clustered_vectors{$file}){
+			my $num_vectors;
+			$centroid_values{$file}{$cluster_index} = [(0) x $num_columns];
+			foreach my $vector (@{$clustered_vectors{$file}{$cluster_index}}){
+				$num_vectors++;
+				my @vector = @$vector;
+				foreach my $i (0 .. $num_columns-1){
+					$centroid_values{$file}{$cluster_index}[$i] += $vector[$i];
 				}
-				$vector_count++;
+			}
+			foreach my $i (0.. $num_columns-1){
+				$centroid_values{$file}{$cluster_index}[$i] /= $num_vectors;
 			}
 		}
 	}
 	return \%centroid_values;
-}
-
-sub CosSim {
-	# calculates cosine similarity between two vectors (aka the dot product)
-	# cosine similarity forumla (Vector a, Vector b):
-	# (a * b) / (|a|*|b|)
-	my ($v_1, $v_2) = (@_);
-	my @v_1 = @$v_1;
-	my @v_2 = @$v_2;
-	my $vectors = each_array(@v_1, @v_2);
-	my $numerator;
-	my $x_mag;
-	my $y_mag;
-	while (my ($x, $y) = $vectors->() ) {
-		$numerator += $x*$y;
-		$x_mag += $x**2;
-		$y_mag += $y**2;
-	}
-	my $denominator = sqrt($x_mag)*sqrt($y_mag);
-	my $cos_sim = $numerator/$denominator;
-	return $cos_sim;
-}
-
-sub LabelClusters {
-	# labels cluster centroid with cui/term of vector closest to the centroid, determined with cosine similarity 
-
-	my %centroid_values = %$centroid_values;
-	my %cluster_indices = %$cluster_indices;
-	my %vector_indices = %$vector_indices;
-	my %cui_vector_indices = %$cui_vector_indices;
-	my %centroid_labels;
-
-	foreach my $file (keys %centroid_values){
-		foreach my $cluster_index (keys $centroid_values{$file}){
-			my $min_cos_sim = 0;
-			my @centroid_vector = $centroid_values{$file}{$cluster_index};
-			my $min_vector_index = -1;
-			foreach my $vector_index (@{$cluster_indices{$file}{$cluster_index}}){
-				my @cluster_vector = $vector_indices{$file}{$vector_index};
-				my $cos_sim = CosSim(\@centroid_vector, \@cluster_vector);
-				print "$file $cluster_index $vector_index $cos_sim\n";
-				if ($cos_sim < $min_cos_sim){
-					$min_cos_sim = $cos_sim;
-					$min_vector_index = $vector_index;
-				}
-			}
-			my $centroid_cui = $cui_vector_indices{$file}{$min_vector_index};
-			$centroid_labels{$file}{$cluster_index} = $centroid_cui;
-		}
-	}
-	print Dumper(\%centroid_labels);
-	return \%centroid_labels;
 }
