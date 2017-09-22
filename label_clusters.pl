@@ -192,7 +192,6 @@ sub LabelCentroids {
 			$labelled_centroids{$file}{$cluster_index} = $cui;
 		}
 	}
-	print Dumper(\%labelled_centroids);
 	return \%labelled_centroids;
 }
 
