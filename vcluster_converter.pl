@@ -3,8 +3,6 @@ use strict;
 use warnings;
 use Cwd;
 
-# usage: perl vcluster_converter.pl [cui_terms_file] [cui_vectors_file]
-
 ## Main
 my $start_time = time;
 my ($cui_terms_file, $cui_vectors_file, $base_dir) = GetArgs();
@@ -101,4 +99,3 @@ sub PrintVectors {
 	print "Vcluster-formatted files located at: $base_dir/$vcluster_file\n";
 
 }
-
