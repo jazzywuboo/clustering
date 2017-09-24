@@ -2,116 +2,103 @@
 use strict;
 use warnings;
 use Cwd;
-# usage: perl vcluster_converter.pl [unformatted_dir] [vcluster_dir]
 
-# takes in files containing word2vec vectors and prints them in the format required for the vcluster program in CLUTO
-# line 1: num_rows num_columns
-# lines [2-num_rows+1]: vectors
+# usage: perl vcluster_converter.pl [cui_terms_file] [cui_vectors_file]
 
 ## Main
 my $start_time = time;
-my ($unformatted_dir, $vcluster_dir) = GetArgs();
-my $input_filenames = SaveInputFilenames();
-my $sizeof_matrices = GetSizeofMatrices();
-my $matrices = ExtractMatrices();
-PrintVClusterMatrices($sizeof_matrices, $matrices);
+my ($cui_terms_file, $cui_vectors_file, $base_dir) = GetArgs();
+my $cui_info = SaveCuiInfo();
+my $vectors = ExtractVectors();
+PrintVectors($vectors);
 my $end_time = time - $start_time;
 my $execution_time = $end_time/60;
 printf("Execution time: %.2f mins\n", $execution_time);
 
 sub PrintUsageNotes {
-	print "Usage:\tperl vcluster_converter.pl [unformatted_dir] [vcluster_dir]\n";
+	print "Usage:\tperl vcluster_converter.pl [cui_terms_file] [cui_vectors_file]\n";
 }
 
 sub GetArgs {
 	# gets source directory and destination directory from user
 	no warnings 'uninitialized';
 	my $base_dir = cwd();
-	my $unformatted_dir = $ARGV[0];
-	my $vcluster_dir = $ARGV[1];
-	if (-f $unformatted_dir){
-		print "Error: Input must be a directory.\n";
+	my $cui_terms_file = "$ARGV[0]";
+	my $cui_vectors_file = "$ARGV[1]";
+
+	if ($#ARGV < 1 || $#ARGV > 1){
+		print "Program takes 2 arguments.\n";
 		PrintUsageNotes();
 		exit
 	}
-	if (! (-e $unformatted_dir) ){
-		print "Error: $unformatted_dir not found. Check source directory name.\n";
-		PrintUsageNotes();
-		exit
-	}
-	if (! (-e $vcluster_dir)){
-		mkdir "$base_dir/$vcluster_dir", 0755;
-	}
-	$unformatted_dir = "$base_dir/$ARGV[0]";
-	$vcluster_dir = "$base_dir/$ARGV[1]";
-	return $unformatted_dir, $vcluster_dir;
-}
 
-sub SaveInputFilenames {
-	my @input_filenames;
-	opendir my $dh, $unformatted_dir or die "Can't open $unformatted_dir: $!";
-	while (my $file = readdir($dh)) {
-		next if ($file =~ /^\./);
-		next if -d $file;
-		push @input_filenames, $file;
-	}
-	closedir $dh;
-	return \@input_filenames;
-}
-
-sub GetSizeofMatrices {
-	# determines size of matrix in each file
-	my %sizeof_matrices;
-	foreach my $file (@$input_filenames){
-		open my $fh, '<', "$unformatted_dir/$file" or die "Can't open $unformatted_dir/$file: $!";
-		while (my $line = <$fh>){
-			if ($line =~ /^(-?\d+)\s(-?\d+)$/){
-				my $num_rows = $1-1;
-				my $num_columns = $2;
-				$sizeof_matrices{$file}{$num_rows} = $num_columns;
-				last;
-			}
+	if (! -e $cui_terms_file || ! -f $cui_terms_file || ! -e $cui_vectors_file || ! -f $cui_vectors_file){
+		if (! -e $cui_terms_file){
+			print "Error: $cui_terms_file not found.\n";
 		}
-		close $fh;
+		if (! -f $cui_terms_file){
+			print "Error: $cui_terms_file must be a file.\n";
+		}
+		if (! -e $cui_vectors_file){
+			print "Error: $cui_vectors_file not found.\n";
+		}
+		if (! -f $cui_vectors_file){
+			print "Error: $cui_vectors_file must be a file.\n";
+		}
+		PrintUsageNotes();
+		exit
 	}
-	return \%sizeof_matrices;
+	return $cui_terms_file, $cui_vectors_file, $base_dir;
 }
 
-sub ExtractMatrices {
-	# extractors word2vec matrices from each file
-	my %matrices;
-	foreach my $file (@$input_filenames){
-		$matrices{$file} = ();
-		open my $fh, '<', "$unformatted_dir/$file" or die "Can't open $unformatted_dir/$file: $!";
-		while (my $line = <$fh>){
-			if ($line =~ /^C\d{7}(.+)/){
-				my $vector = $1;
+sub SaveCuiInfo {
+	my %cui_info;
+	open my $fh, '<', "$base_dir/$cui_terms_file" or die "Can't open $base_dir/$cui_terms_file: $!";
+	while (my $line = <$fh>) {
+		if ($line =~ /^\d+\t(\d+.\d+)\t(C\d{7})\t(.+)/){
+			my $score = $1;
+			my $cui = $2;
+			my $term = $3;
+			$cui_info{$cui}{$term} = $score;
+		}
+	}
+	close $fh;
+	return \%cui_info;
+}
+
+sub ExtractVectors {
+	# extractors word2vec vectors from each file
+	my @vectors;
+	my %cui_info = %$cui_info;
+	open my $fh, '<', "$base_dir/$cui_vectors_file" or die "Can't open $base_dir/$cui_vectors_file: $!";
+	while (my $line = <$fh>){
+		if ($line =~ /^(C\d{7})(.+)/){
+			my $cui = $1;
+			if (exists $cui_info{$cui}){
+				my $vector = $2;
 				my @vector_vals = ($vector =~ /(-?\d.\d+)/g);
-				push @{$matrices{$file}}, [@vector_vals];
+				push @vectors, [@vector_vals];
 			}
 		}
-		close $fh;
 	}
-	return \%matrices;
+	close $fh;
+	return \@vectors;
 }
 
-sub PrintVClusterMatrices {
+sub PrintVectors {
 	# prints dense matrices in format for vcluster program in CLUTO
-	my ($sizeof_matrices, $matrices) = (@_);
-	my %sizeof_matrices = %$sizeof_matrices;
-	my %matrices = %$matrices;
-	foreach my $file (keys %sizeof_matrices) {
-		foreach my $num_rows (keys $sizeof_matrices{$file}){
-			my $num_columns = $sizeof_matrices{$file}{$num_rows};
-			open my $fh, ">", "$vcluster_dir/$file" or die "Can't open $vcluster_dir/$file: $!";
-			print $fh "$num_rows $num_columns\n";
-			foreach my $vector_vals (@{$matrices{$file}}) {
-				print $fh join(' ', @$vector_vals);
-				print $fh "\n";
-			}
-			close $fh;
-		}
+	my @vectors = @$vectors;
+	my $num_rows = @vectors;
+	my $num_columns = @{$vectors[0]};
+	my $vcluster_file = "$cui_vectors_file.vcluster";
+	open my $fh, ">", "$base_dir/$vcluster_file" or die "Can't open $base_dir/$vcluster_file: $!";
+	print $fh "$num_rows $num_columns\n";
+	foreach my $vector (@vectors) {
+		print $fh join(' ', @$vector);
+		print $fh "\n";
 	}
-	print "Vcluster-formatted files located at: $vcluster_dir\n";
+	close $fh;
+	print "Vcluster-formatted files located at: $base_dir/$vcluster_file\n";
+
 }
 
