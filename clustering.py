@@ -4,7 +4,21 @@ import os.path
 import re
 from collections import defaultdict
 
-class LTCVectorConverter:
+"""
+* Class VectorConverter
+    * Change LTC to general vectors; could be used for end terms in future
+    * ltc_vectors = [vectors] # built-in index; index/vector
+    * ltc_vectors = cui # built-in index; index/cui
+    * ltc[cui] = term; cui/term
+* Class RunVCluster
+    * Paths
+* Class LabelledClusters
+    * index/vector
+    * index/cui
+    * Cui/term
+"""
+
+class VectorConverter:
 
 	def PrintUsageNotes(self):
 		print "Usage: python vcluster_converter.py [ltc_file] [cui_vectors_file]"
@@ -80,7 +94,7 @@ class LTCVectorConverter:
 				f.write('\n')
 
 def main():
-	converter = LTCVectorConverter()
+	converter = VectorConverter()
 	converter.GetPaths()
 	converter.CheckPaths()
 	ltcs = converter.SaveLTCs()
