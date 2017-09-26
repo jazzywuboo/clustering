@@ -75,8 +75,7 @@ class LTCVectorConverter:
 		with open(ltc_vector_file, 'w') as f:
 			f.write(matrix_size)
 			for vector in self.ltc_vectors:
-				print ' '.join(vector)
-				f.write(vector)
+				f.write(' '.join(vector))
 
 def main():
 	converter = LTCVectorConverter()
@@ -88,3 +87,6 @@ def main():
 
 if __name__ == '__main__':
 	main()
+
+
+
