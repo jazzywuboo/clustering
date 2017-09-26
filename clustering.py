@@ -4,7 +4,7 @@ import os.path
 import re
 from collections import defaultdict
 
-class VectorConverter:
+class LTCVectorConverter:
 
 	def PrintUsageNotes(self):
 		print "Usage: python vcluster_converter.py [ltc_file] [cui_vectors_file]"
@@ -42,7 +42,7 @@ class VectorConverter:
 
 	def SaveLTCs(self):
 		self.ltcs = defaultdict(dict)
-		with open (self.ltc_file) as f:
+		with open (self.ltc_file, 'r') as f:
 			lines = f.readlines()
 			for line in lines:
 				matches = re.search(r'^\d+\t(\d+.\d+)\t(C\d{7})\t(.+)', line)
@@ -53,14 +53,38 @@ class VectorConverter:
 					self.ltcs[cui][term] = score
 		return self.ltcs
 
+	def SaveLTCVectors(self):
+		self.ltc_vectors = []
+		with open (self.cui_vectors_file, 'r') as f:
+			lines = f.readlines()
+			for line in lines:
+				matches = re.search(r'^(C\d{7})(.+)', line)
+				if matches:
+					cui = matches.group(1)
+					if cui in self.ltcs:
+						vector_string = matches.group(2)
+						vector = re.findall(r'(-?\d.\d+)', vector_string)
+						self.ltc_vectors.append(vector)
+		return self.ltc_vectors
+
+	def PrintVectors(self):
+		ltc_vector_file = self.cui_vectors_file + ".vcluster"
+		num_rows = len(self.ltc_vectors)
+		num_columns = len(self.ltc_vectors[0])
+		matrix_size = str(num_rows) + ' ' + str(num_columns)
+		with open(ltc_vector_file, 'w') as f:
+			f.write(matrix_size)
+			for vector in self.ltc_vectors:
+				print ' '.join(vector)
+				f.write(vector)
+
 def main():
-	converter = VectorConverter()
+	converter = LTCVectorConverter()
 	converter.GetPaths()
 	converter.CheckPaths()
 	ltcs = converter.SaveLTCs()
+	ltc_vectors = converter.SaveLTCVectors()
+	converter.PrintVectors()
 
 if __name__ == '__main__':
 	main()
-
-
-
