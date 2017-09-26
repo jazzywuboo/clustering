@@ -74,8 +74,10 @@ class LTCVectorConverter:
 		matrix_size = str(num_rows) + ' ' + str(num_columns)
 		with open(ltc_vector_file, 'w') as f:
 			f.write(matrix_size)
+			f.write('\n')
 			for vector in self.ltc_vectors:
 				f.write(' '.join(vector))
+				f.write('\n')
 
 def main():
 	converter = LTCVectorConverter()
@@ -87,4 +89,3 @@ def main():
 
 if __name__ == '__main__':
 	main()
-
