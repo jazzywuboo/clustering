@@ -10,9 +10,11 @@ use Cwd;
 
 my $start_time = time;
 my ($ltc_file, $vector_file, $base_dir) = SetPaths();
-my $linking_terms = SaveLinkingTerms();
-my $vectors = ExtractVectors();
-PrintVectors($vectors);
+my ($cui_terms, $cui_scores) = SaveLinkingTermInfo();
+my ($reduced_cui_vectors, $reduced_cui_terms, $reduced_cui_scores) = ExtractVectors();
+my $cui_rankings = DetermineCuiRankings();
+PrintVectors();
+PrintNewLTCFile();
 my $end_time = time - $start_time;
 my $execution_time = $end_time/60;
 printf("Execution time: %.2f mins\n", $execution_time);
@@ -53,72 +55,101 @@ sub SetPaths {
 	return $ltc_file, $vector_file, $base_dir;
 }
 
-sub SaveLinkingTerms {
+sub SaveLinkingTermInfo {
 	# saves cui-term-score information in a hash of structure %linking_terms: cui -> term -> score
-	my %linking_terms;
+	my %cui_terms;
+	my %cui_scores;
 	open my $fh, '<', "$base_dir/$ltc_file" or die "Can't open $base_dir/$ltc_file: $!";
 	while (my $line = <$fh>) {
-		if ($line =~ /\d+\t(\d+.\d+)\t(C\d{7})\t.+/){
+		if ($line =~ /\d+\t(\d+.\d+)\t(C\d{7})\t(.+)/){
 			my $score = $1;
 			my $cui = $2;
-			$linking_terms{$cui} = $score;
+			my $term = $3;
+			$cui_terms{$cui} = $term;
+			$cui_scores{$cui} = $score;
 		}
 	}
 	close $fh;
-	return \%linking_terms;
+	return \%cui_terms, \%cui_scores;
 }
 
 sub ExtractVectors {
 	# extractors word2vec vectors that correspond to LTC cui's and saves to an array of arrays
-	my %vectors;
-	my %linking_terms = %$linking_terms;
+	my %reduced_cui_vectors;
+	my %cui_terms = %$cui_terms;
+	my %cui_scores = %$cui_scores;
+	my %reduced_cui_terms;
+	my %reduced_cui_scores;
+
 	open my $fh, '<', "$base_dir/$vector_file" or die "Can't open $base_dir/$vector_file: $!";
 	while (my $line = <$fh>){
 		if ($line =~ /^(C\d{7})(.+)/){
 			my $cui = $1;
-			if (exists $linking_terms{$cui}){
+			if (exists $cui_terms{$cui}){
 				my $vector = $2;
 				my @vector_vals = ($vector =~ /(-?\d.\d+)/g);
-				$vectors{$cui} = [@vector_vals];
+				$reduced_cui_vectors{$cui} = [@vector_vals];
+
+				my $term = $cui_terms{$cui};
+				my $score = $cui_scores{$cui};
+
+				$reduced_cui_terms{$cui} = $term;
+				$reduced_cui_scores{$cui} = $score;
 			}
 		}
 	}
 	close $fh;
-	return \%vectors;
+	return \%reduced_cui_vectors, \%reduced_cui_terms, \%reduced_cui_scores;
 }
 
-sub TestSort {
-	my %linking_terms = %$linking_terms;
-	my %ranked_cuis;
-	my @cuis = sort {$linking_terms{$b} <=> $linking_terms{$a}} keys(%linking_terms);
+sub DetermineCuiRankings {
+	my @cui_rankings;
+	my %reduced_cui_scores = %$reduced_cui_scores;
+	my @cuis = sort {$reduced_cui_scores{$b} <=> $reduced_cui_scores{$a}} keys(%reduced_cui_scores);	# sorts cuis by score
 	foreach my $cui (@cuis){
-		my $score = $linking_terms{$cui};
-		$ranked_cuis{$cui} = $score;
-		print "$cui $score\n";
+		push @cui_rankings, $cui;
 	}
+	return \@cui_rankings;
 }
 
 sub PrintVectors {
 	# prints dense matrices in format required for CLUTO's vcluster program
-	my %vectors = %$vectors;
-	my $num_rows = keys %vectors;
+	my %reduced_cui_vectors = %$reduced_cui_vectors;
+	my $num_rows = keys %reduced_cui_vectors;
 	my $num_columns = 200;		# change this later
 	my $file_extension = "_v";
-	my %linking_terms = %$linking_terms;
+	my %reduced_cui_terms = %$reduced_cui_terms;
+	my %reduced_cui_scores = %$reduced_cui_scores;
 	my $vcluster_file = "$vector_file$file_extension";
+	my @cui_rankings = @$cui_rankings;
 
 	open my $fh, ">", "$base_dir/$vcluster_file" or die "Can't open $base_dir/$vcluster_file: $!";
 	print $fh "$num_rows $num_columns\n";
 
-	my @cuis = sort {$linking_terms{$b} <=> $linking_terms{$a}} keys(%linking_terms);	# prints vectors sorted by ltc score
-	foreach my $cui (@cuis){
-		if (exists $vectors{$cui}){
-			my $vector = @$vectors{$cui};
-			print $fh join(' ', @$vector);
-			print $fh "\n";
-		}
+	foreach my $cui (@cui_rankings){
+		my $vector = @$reduced_cui_vectors{$cui};
+		print $fh join(' ', @$vector);
+		print $fh "\n";
 	}
 	close $fh;
-
 	print "Vcluster-formatted files located at: $base_dir/$vcluster_file\n";
 }
+
+sub PrintNewLTCFile {
+	my %reduced_cui_terms = %$reduced_cui_terms;
+	my %reduced_cui_scores = %$reduced_cui_scores;
+	my $new_ltc_file = $ltc_file;
+	$new_ltc_file =~ s/.*\/(.*)/$1/;
+	my $file_extension = "_reduced";
+	$new_ltc_file = "$ltc_file$file_extension";
+	my @cui_rankings = @$cui_rankings;
+
+	open my $fh, ">", "$base_dir/$new_ltc_file" or die "Can't open $base_dir/$new_ltc_file: $!";
+	foreach my $cui (@cui_rankings){
+		my $score = $reduced_cui_scores{$cui};
+		my $term = $reduced_cui_terms{$cui};
+		print $fh "$score\t$cui\t$term\n";
+	}
+	close $fh;
+}
+
