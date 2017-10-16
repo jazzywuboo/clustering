@@ -20,6 +20,7 @@ sub GetArgs {
 	if ($#ARGV < 2 || $#ARGV > 2){
 		print "Error: 3 arguments required.\n";
 		print "Usage: perl run_vcluster.pl [vcluster_path] [input_file] [num_clusters]\n";
+		exit
 	}
 	elsif (! -e "$vcluster_path/vcluster" || ! -e $input_file || ! -f $input_file || $num_clusters < 0 || !($num_clusters =~ /(^-?\d+$)/)){
 		if (! -e "$vcluster_path/vcluster"){	# check if vcluster program exists in directory
