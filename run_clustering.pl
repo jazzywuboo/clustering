@@ -21,7 +21,7 @@ my $reduced_ltc_file = $ltc_file . '_reduced';
 my $reduced_vector_file = $vector_file . '_v';
 my $clustered_file = $reduced_vector_file . '.clustering.' . $num_clusters;
 
-for (my $i = 0; $i <= 20; $i += 0.05){
+for (my $i = 0; $i <= 1; $i += 0.05){
 	`perl vcluster_converter.pl $ltc_file $vector_file $opt_data_dir`;
 	`perl run_vcluster.pl $vcluster_path $reduced_vector_file $num_clusters $opt_data_dir`;
 	`perl label_and_rank_clusters.pl $reduced_ltc_file $reduced_vector_file $clustered_file $opt_data_dir`;
