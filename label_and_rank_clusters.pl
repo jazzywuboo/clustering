@@ -2,9 +2,7 @@
 use strict;
 use warnings;
 use Cwd;
-use Data::Dumper;
 
-my $start_time = time;
 my ($base_dir, $reduced_ltc_file, $reduced_vector_file, $clustered_file, $num_clusters, $results_dir) = GetArgs();
 my ($scores, $cuis, $cui_terms) = ExtractLTCInfo();
 my $vectors = ExtractVectors();
@@ -12,16 +10,9 @@ my $clustered_vectors = ExtractClusteredVectors();
 my $cluster_rankings = CalculateInterClusterRanking();
 my $centroid_values = CalculateCentroids();
 my $cluster_names = LabelClusters();
-PrintRankedTerms();
-PrintExecutionTime();
-
-sub PrintExecutionTime {
-	my $execution_time = (time - $start_time)/60;
-	printf("Execution time: %.2f minutes\n", $execution_time);
-}
 
 sub PrintUsageNotes {
-	print "Usage: perl print_ranked_clusters.pl [reduced_ltc_file] [reduced_vector_file] [clustered_file] [opt_base_filepath]\n";
+	print "Usage: perl print_ranked_clusters.pl [reduced_ltc_file] [reduced_vector_file] [clustered_file] [opt_data_dir]\n";
 }
 
 sub GetArgs {
@@ -32,11 +23,12 @@ sub GetArgs {
 	my $reduced_ltc_file = $ARGV[0];
 	my $reduced_vector_file = $ARGV[1];
 	my $clustered_file = $ARGV[2];
-	my $opt_base_dir = $ARGV[3];
-	if (-e $opt_base_dir) {
-		$reduced_ltc_file = "$opt_base_dir/$reduced_ltc_file";
-		$reduced_vector_file = "$opt_base_dir/$reduced_vector_file";
-		$clustered_file = "$opt_base_dir/$clustered_file";
+	my $opt_data_dir = $ARGV[3];
+
+	if (-e $opt_data_dir) {
+		$reduced_ltc_file = 	"$opt_data_dir/$reduced_ltc_file";
+		$reduced_vector_file = 	"$opt_data_dir/$reduced_vector_file";
+		$clustered_file = 		"$opt_data_dir/$clustered_file";
 	}
 
 	if ($#ARGV < 2 || $#ARGV > 3){
@@ -51,8 +43,7 @@ sub GetArgs {
 		exit
 	}
 
-	if (! -e $reduced_ltc_file || ! -f $reduced_ltc_file || ! -e $reduced_vector_file || ! -f $reduced_vector_file || ! -e $clustered_file || ! -f $clustered_file
-		|| ! -e $base_dir){
+	if (! -e $reduced_ltc_file || ! -f $reduced_ltc_file || ! -e $reduced_vector_file || ! -f $reduced_vector_file || ! -e $clustered_file || ! -f $clustered_file || ! -e $base_dir){
 		if (! -e $base_dir){
 			print "Error: $base_dir does not exist.\n";
 		}
@@ -189,14 +180,14 @@ sub LabelClusters {
 
 	foreach my $cluster_index (keys %centroid_values){
 		my $centroid_vector_index;
-		my $min_cos_sim = 10;	# arbitrarily large value (?)
+		my $max_cos_sim = -1;							# start with minimum value for cosine similarity
 		my @centroid = @{$centroid_values{$cluster_index}};
 		foreach my $vector_index (@{$clustered_vectors[$cluster_index]}){
 			my @vector = @{$vectors[$vector_index]};
 			my $cos_sim = CosSim(\@centroid, \@vector);
-			if ($cos_sim < $min_cos_sim){
-				$min_cos_sim = $cos_sim;
-				$centroid_vector_index = $vector_index;
+			if ($cos_sim > $max_cos_sim){
+				$max_cos_sim = $cos_sim;				# update maximum cosine similarity value
+				$centroid_vector_index = $vector_index;	# update centroid vector index
 			}
 		}
 		my $cui = $cuis[$centroid_vector_index];
@@ -220,7 +211,7 @@ sub PrintRankedTerms {
 
 	my $results_file = $reduced_ltc_file;
 	$results_file =~ s/.*\/(.*)/$1/;
-	$results_file =~ s/(.*?_)(.*)/$1results/;
+	$results_file =~ s/(.*?_)(.*)/$1results_$num_clusters/;
 
 	open my $fh, '>', "$results_dir/$results_file" or die "Can't open $results_dir/$results_file: $!";
 	foreach my $cluster_index (@cluster_rankings){
@@ -229,10 +220,11 @@ sub PrintRankedTerms {
 			my $score = $scores[$vector_index];
 			my $cui = $cuis[$vector_index];
 			my $term = $cui_terms{$cui};
-			print $fh "$cui\t$term\t$cluster_name\n";
+			print $fh "$cui\t$term\t$cluster_name\$score\n";
 		}
 	}
 	close $fh;
+	print "Ranked clusters printed to $results_dir/$results_file\n";
 }
 
 sub CosSim {
@@ -251,12 +243,7 @@ sub CosSim {
 		$a_sq_sum += $a**2;
 		$b_sq_sum += $b**2;
 	}
-
 	my $denominator = sqrt($a_sq_sum)*sqrt($b_sq_sum);
 	my $cos_sim = $numerator/$denominator;
 	return $cos_sim;
 }
-
-
-
-
