@@ -8,32 +8,34 @@ use Cwd;
 # program finds the vectors corresponding to the cui terms and prints them to a file
 # output file ends in _v and is ready to be process by vcluster
 
-my $start_time = time;
 my ($ltc_file, $vector_file, $base_dir) = SetPaths();
 my ($cui_terms, $cui_scores) = SaveLinkingTermInfo();
 my ($reduced_cui_vectors, $reduced_cui_terms, $reduced_cui_scores) = ExtractVectors();
 my $cui_rankings = DetermineCuiRankings();
 PrintVectors();
 PrintNewLTCFile();
-my $end_time = time - $start_time;
-my $execution_time = $end_time/60;
-printf("Execution time: %.2f mins\n", $execution_time);
 
 sub PrintUsageNotes {
-	print "Usage:\tperl vcluster_converter.pl [ltc_file] [vector_file]\n";
+	print "Usage:\tperl vcluster_converter.pl [ltc_file] [vector_file] [opt_data_dir]\n";
 }
 
 sub SetPaths {
 	# gets source directory and destination directory from user
 	no warnings 'uninitialized';
 	my $base_dir = cwd();
-	my $ltc_file = "$ARGV[0]";
-	my $vector_file = "$ARGV[1]";
+	my $ltc_file = $ARGV[0];
+	my $vector_file = $ARGV[1];
+	my $opt_data_dir = $ARGV[2];
 
-	if ($#ARGV < 1 || $#ARGV > 1){
-		print "Program takes 2 arguments.\n";
+	if ($#ARGV < 2 || $#ARGV > 3){
+		print "Program requires 2 arguments; 3rd is optional.\n";
 		PrintUsageNotes();
 		exit
+	}
+
+	if (-e $opt_data_dir) {
+		$ltc_file = 	"$opt_data_dir/$ltc_file";
+		$vector_file = 	"$opt_data_dir/$vector_file";
 	}
 
 	if (! -e $ltc_file || ! -f $ltc_file || ! -e $vector_file || ! -f $vector_file){
@@ -52,6 +54,7 @@ sub SetPaths {
 		PrintUsageNotes();
 		exit
 	}
+
 	return $ltc_file, $vector_file, $base_dir;
 }
 
@@ -152,4 +155,3 @@ sub PrintNewLTCFile {
 	}
 	close $fh;
 }
-
